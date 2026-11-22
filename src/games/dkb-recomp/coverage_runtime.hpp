@@ -115,8 +115,13 @@ inline void Record(const char* event, uint32_t crc, const Entry& entry) {
   file << line;
 }
 
+// NOT REPLACED marks only what needs attention: a scene composite left as the game draws it.
+// Grade and encoder passes are listed to show the whole HDR chain; the correction is made in the
+// composite, so they stay as they are.
 inline std::string Status(const Entry& entry) {
   if (entry.replaced) return std::string("replaced, ") + entry.by;
+  if (!IsComposite(entry.cls)) return "unchanged, not a scene composite";
+  if (entry.cls == Class::HDR_COMPOSITE_SHOULDERED) return "NOT REPLACED, hdr_shoulder is on: set hdr_shoulder=0";
   return entry.reason.empty() ? std::string("NOT REPLACED") : "NOT REPLACED, " + entry.reason;
 }
 
