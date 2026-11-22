@@ -1,0 +1,26 @@
+// Body of dkb_output_hook() in structurally rewritten composites, called
+// before main returns, after the game has written dkb_frag_out (including any
+// ID-mask colours). It applies the Custom brightness source as the tail of
+// gameplay_highlights.slangi does; with the Game source it changes nothing.
+//
+// Two parts:
+//   cap    to the slider peak (peak / diffuse); needs no absolute white. The
+//          game's own colours reach its peak c[4].x, which can exceed the
+//          slider peak.
+//   scale  by diffuse / c[5].x, the game's paper white. c[5].x is read by no
+//          game shader, so it is trusted only within 50..1000 nits; otherwise
+//          the colour stays in the game's units (capped, not rescaled).
+
+if (shader_injection.tone_map_type != DKB_TONE_MAP_TYPE_RENODRT) return;
+if (shader_injection.brightness_source != DKB_BRIGHTNESS_SOURCE_CUSTOM) return;
+float diffuseNits = shader_injection.diffuse_white_nits;
+float peakNits = shader_injection.peak_white_nits;
+if (!(diffuseNits > 0.f && peakNits > 0.f)) return;
+peakNits = max(peakNits, diffuseNits);
+float peakRatio = peakNits / diffuseNits;
+float3 rgb = dkb_frag_out.rgb;
+float outMax = max(rgb.x, max(rgb.y, rgb.z));
+rgb *= peakRatio / max(outMax, peakRatio);
+float gameWhite = dkb_c3[5].x;
+if (gameWhite >= 50.f && gameWhite <= 1000.f) rgb *= diffuseNits / gameWhite;
+dkb_frag_out.rgb = rgb;

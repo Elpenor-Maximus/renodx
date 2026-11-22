@@ -1,0 +1,12 @@
+{
+  "$schema": "https://cdn.jsdelivr.net/gh/clshortfuse/renodx/renodx-metadata-schema.json",
+  "id": "dkb-recomp",
+  "title": "Donkey Kong Bananza PC Recompilation",
+  "status": "experimental",
+  "summary": "HDR highlight extension for the native HDR mode in game version 3.2.0, applied to every scene composite by its structure.",
+  "deploy": {
+    "api": "vulkan",
+    "game_exe": "dkb.exe",
+    "architecture": ["x64"]
+  }
+}

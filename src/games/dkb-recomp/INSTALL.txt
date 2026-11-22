@@ -1,0 +1,59 @@
+RenoDX for the Donkey Kong Bananza PC recompilation
+===================================================
+
+Extends the highlights of the game's native HDR mode to your display's peak
+brightness with RenoDX's tone mapper (RenoDRT). Below the game's HDR knee the
+image is the game's own. The add-on contains no game code: it recognises the
+game's HDR composite shaders by their structure when the game creates them and
+corrects them in place.
+
+Requirements
+------------
+- The Vulkan dkb.exe of the DKB PC recompilation, game version 3.2.0.
+- An HDR10 display with HDR enabled in Windows.
+- ReShade 6 with full add-on support, installed for dkb.exe (Vulkan).
+
+Install
+-------
+1. In dkb.ini set:
+       hdr = 1
+       hdr_native = 1
+       hdr_shoulder = 0
+   hdr_shoulder must be 0: the recompilation's own highlight rewrite changes
+   the shaders, and the add-on then leaves them alone. The add-on offers the
+   same shoulder itself (Tone Mapper: Vanilla + shoulder).
+2. Copy renodx-dkb-recomp.addon64 into ReShade's add-on folder (by default
+   the folder that holds dkb.exe).
+3. Do not load another RenoDX add-on (for example RenoDX DevKit) at the same
+   time.
+
+Settings (ReShade overlay, Home key, Add-ons tab, RenoDX)
+--------------------------------------------------------
+Tone Mapper          Vanilla: the game's console HDR curve.
+                     RenoDRT (default): highlights extended to the peak.
+                     Vanilla + shoulder: the recompilation's own highlight
+                     shoulder, as with hdr_shoulder = 1.
+Brightness Source    Game (default): follows the game's HDR settings
+                     (hdr_peak_nits, capped by the game at 1400, and
+                     hdr_game_nits). Custom: the two sliders below.
+Peak Brightness      Custom only. Peak white in nits.
+Game Brightness      Custom only. Paper white of the scene in nits; the HUD
+                     stays at hdr_game_nits.
+Hue Correction, Highlight Saturation, Blowout, Flare
+                     Standard RenoDX highlight controls.
+Structural rewrite   (Coverage section) On by default. Takes effect at the
+                     next start of the game.
+
+The Coverage section lists the game's HDR shaders and whether each one is
+corrected. The add-on writes the same list to renodx-dkb-recomp-coverage\
+coverage.tsv beside itself. A shader it does not recognise keeps the game's
+image, with a reason code in that list; please include it when reporting a
+problem, together with ReShade.log.
+
+Uninstall
+---------
+Delete renodx-dkb-recomp.addon64 (and the renodx-dkb-recomp-coverage folder).
+
+Licence
+-------
+MIT, as RenoDX; see LICENSE.

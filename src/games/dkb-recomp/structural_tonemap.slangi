@@ -1,0 +1,118 @@
+// Body of dkb_tonemap_hook() in structurally rewritten composites
+// (dkb-pc-recomp/tools/dkb_composite_struct.py). It runs right after the
+// game's three peak clamps, before anything that consumes the clamped colour
+// (the NaN guard and output store, or the ID-mask stage of the extra-stage
+// variants), and rewrites dkb_c in place.
+//
+// The correction is gameplay_highlights.slangi, the reference implementation
+// embedded for 0xB537A7CA, with its inputs read from the Private copies the
+// rewrite makes instead of named SPIRV-Cross temporaries:
+//   dkb_c        clamped native colour            (DKB_OUTPUT.rgb before the NaN guard)
+//   dkb_c3[]     the composite's uniform rows     (DKB_C3)
+//   dkb_exposed  exposed scene colour             (DKB_EXPOSED_RGB)
+//   dkb_lut_uvw  3D LUT coordinate                (DKB_LUT_UVW; unused without a LUT)
+//   dkb_graded   graded colour                    (DKB_GRADED_RGB)
+//   dkb_ys       native brightness Ys             (DKB_NATIVE_BRIGHTNESS)
+//   dkb_chroma   chroma blend weight              (DKB_CHROMA)
+// Brightness scaling (Custom source) runs later, in structural_output.slangi,
+// so that it also applies to colours the ID-mask stage substitutes, as the
+// game's own paper white does. Unlike the reference, this hook never reads
+// c[5].x (see below). Any change to the maths must be mirrored in
+// gameplay_highlights.slangi or the A/B regression will report it.
+
+// Vanilla with the recompilation's highlight shoulder (shared.h).
+if (shader_injection.tone_map_type == DKB_TONE_MAP_TYPE_SHOULDER) {
+  dkb_c = DkbRecompShoulder(dkb_c, dkb_ys, dkb_c3[1], dkb_c3[4]);
+  return;
+}
+if (shader_injection.tone_map_type != DKB_TONE_MAP_TYPE_RENODRT) return;
+
+float nativePeakRatio = dkb_c3[4].x;
+float knee = dkb_c3[4].y;
+float slope = dkb_c3[1].z;
+float center = dkb_c3[1].w;
+float3 power = dkb_c3[3].rgb * dkb_c3[3].w;
+
+// RenoDRT depends only on peak / diffuse (tonemap.hlsl ApplyRenoDRT:
+// nits_peak = peak_nits / game_nits * 100), so the correction needs no
+// absolute paper white. Game mode uses the game's own ratio c[4].x, which is
+// read by every composite's clamp; 203 below is only a unit. c[5].x (the
+// absolute paper white, which no game shader reads) is needed only by the
+// Custom brightness scaling in structural_output.slangi.
+float peakRatio = nativePeakRatio;
+float diffuseNits = 203.f;
+float peakNits = 203.f * nativePeakRatio;
+if (shader_injection.brightness_source == DKB_BRIGHTNESS_SOURCE_CUSTOM) {
+  diffuseNits = shader_injection.diffuse_white_nits;
+  peakNits = shader_injection.peak_white_nits;
+  if (!(diffuseNits > 0.f && peakNits > 0.f)) return;
+  peakNits = max(peakNits, diffuseNits);
+  peakRatio = peakNits / diffuseNits;
+}
+
+// The composite's grade: 0 the clamped curve, 1 a 3D LUT (dkb_lut_uvw its
+// coordinate), 2 a saturation grade of the curve (dkb_lut_uvw the curve before
+// it). DKB_HAS_LUT, a constant, in build-time entries; in the runtime hook
+// (dkb_tonemap_hook.frag.slang) the composite's dkb_has_lut, tested by
+// DKB_LUT_ENABLED and DKB_SAT_GRADE. Build-time entries keep #if so that a
+// variant without either never names dkb_lut_uvw.
+float3 nativeRGB = dkb_c;
+float nativeMaxChannel = max(nativeRGB.x, max(nativeRGB.y, nativeRGB.z));
+#if defined(DKB_LUT_ENABLED)
+bool lutDomain = DKB_LUT_ENABLED ? dkb_c3[0].z > 0.f : true;
+#elif DKB_HAS_LUT == 1
+bool lutDomain = dkb_c3[0].z > 0.f;
+#else
+bool lutDomain = true;
+#endif
+if (!(nativePeakRatio > 1.f && peakRatio > 1.f && knee > 0.18f && knee < 1.f
+      && nativeMaxChannel > knee && slope > 0.f && DkbPowerDomain(power) && lutDomain)) return;
+
+float sigmaBlack = 1.f / (1.f + exp(center * slope));
+float sigmaWhite = 1.f / (1.f + exp((center - 1.f) * slope));
+float sigmaGray = lerp(sigmaBlack, sigmaWhite, -log(1.f - 0.18f));
+if (!(sigmaGray > 0.f && sigmaGray < 1.f)) return;
+float nativeGray = center + log(sigmaGray / (1.f - sigmaGray)) / slope;
+if (!(nativeGray > 0.f)) return;
+renodx::draw::Config config = renodx::draw::BuildConfig();
+config.diffuse_white_nits = diffuseNits;
+config.graphics_white_nits = diffuseNits;   // unused by ToneMapPass
+config.peak_white_nits = peakNits;
+float grayInput = renodx::tonemap::inverse::Neutwo(
+    0.18f, peakRatio, max(config.reno_drt_white_clip, peakRatio));
+float3 scene = DkbSceneFromExposed(dkb_exposed, power, nativeGray, grayInput);
+
+// Without a LUT the graded colour is the clamped SDR curve itself, i.e. the
+// value the LUT variants feed their (removed) identity coordinate.
+// With a saturation grade the neutral reference is the curve before it.
+#if defined(DKB_LUT_ENABLED)
+float3 identityLut = DKB_LUT_ENABLED ? saturate((dkb_lut_uvw - dkb_c3[0].w) / dkb_c3[0].z)
+                                     : (DKB_SAT_GRADE ? max(dkb_lut_uvw, 0.f) : dkb_graded);
+#elif DKB_HAS_LUT == 1
+float3 identityLut = saturate((dkb_lut_uvw - dkb_c3[0].w) / dkb_c3[0].z);
+#elif DKB_HAS_LUT == 2
+float3 identityLut = max(dkb_lut_uvw, 0.f);
+#else
+float3 identityLut = dkb_graded;
+#endif
+float3 gameLuma = float3(0.29891199f, 0.58661097f, 0.114478f);
+float identityY = dot(identityLut, gameLuma);
+float gradeY = dot(dkb_graded, gameLuma);
+if (!(identityY > 1e-10f && gradeY > 1e-10f)) return;
+float3 neutralSDR = dkb_ys * max(0.f, lerp(1.f, identityLut / identityY, dkb_chroma));
+float3 gradedSDR = dkb_ys * max(0.f, lerp(1.f, dkb_graded / gradeY, dkb_chroma));
+
+float3 scene709 = mul(renodx::color::DISPLAYP3_TO_BT709_MAT, scene);
+float3 graded709 = mul(renodx::color::DISPLAYP3_TO_BT709_MAT, gradedSDR);
+float3 neutral709 = mul(renodx::color::DISPLAYP3_TO_BT709_MAT, neutralSDR);
+float3 hdr709 = renodx::draw::ToneMapPass(scene709, graded709, neutral709, config);
+if (!all(isfinite(hdr709))) return;
+float3 hdrP3 = mul(renodx::color::BT709_TO_DISPLAYP3_MAT, hdr709);
+float outputY = renodx::color::y::from::BT709(hdr709);
+if (!(outputY > 0.f)) return;
+hdrP3 = max(0.f, renodx::color::correct::GamutCompress(hdrP3, outputY));
+float nativeY = dot(nativeRGB, renodx::color::DISPLAYP3_TO_XYZ_MAT[1]);
+hdrP3 = renodx::color::correct::Luminance(hdrP3, outputY, max(outputY, nativeY));
+float maxP3 = max(hdrP3.x, max(hdrP3.y, hdrP3.z));
+hdrP3 *= peakRatio / max(maxP3, peakRatio);
+dkb_c = lerp(nativeRGB, hdrP3, smoothstep(knee, 1.f, nativeMaxChannel));
