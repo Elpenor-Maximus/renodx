@@ -12,7 +12,7 @@ if (shader_injection.tone_map_type == DKB_TONE_MAP_TYPE_SHOULDER) {
   return;
 }
 // Vanilla, or no settings pushed (zeroed push range): stock output.
-if (shader_injection.tone_map_type != DKB_TONE_MAP_TYPE_RENODRT) return;
+if (!DkbIsExtended()) return;
 
 float nativePeakRatio = DKB_C3[4].x;
 float gameWhite = DKB_C3[5].x;
@@ -60,8 +60,7 @@ do {
   config.diffuse_white_nits = diffuseNits;
   config.graphics_white_nits = gameWhite;
   config.peak_white_nits = peakNits;
-  float grayInput = renodx::tonemap::inverse::Neutwo(
-      0.18f, peakRatio, max(config.reno_drt_white_clip, peakRatio));
+  float grayInput = DkbGrayInput(peakRatio, config.reno_drt_white_clip);
   float3 scene = DkbSceneFromExposed(DKB_EXPOSED_RGB, power, nativeGray, grayInput);
 
   // Remove the native LUT texel-center offset for the neutral reference. The
@@ -80,7 +79,8 @@ do {
   float3 scene709 = mul(renodx::color::DISPLAYP3_TO_BT709_MAT, scene);
   float3 graded709 = mul(renodx::color::DISPLAYP3_TO_BT709_MAT, gradedSDR);
   float3 neutral709 = mul(renodx::color::DISPLAYP3_TO_BT709_MAT, neutralSDR);
-  float3 hdr709 = renodx::draw::ToneMapPass(scene709, graded709, neutral709, config);
+  float3 hdr709 = DkbToneMap(scene709, graded709, neutral709, config, peakRatio,
+    DkbGrayContrast(nativeGray, sigmaGray, sigmaBlack, sigmaWhite, slope, power));
   if (!all(isfinite(hdr709))) break;
   float3 hdrP3 = mul(renodx::color::BT709_TO_DISPLAYP3_MAT, hdr709);
   float outputY = renodx::color::y::from::BT709(hdr709);

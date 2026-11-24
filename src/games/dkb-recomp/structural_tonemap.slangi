@@ -25,7 +25,7 @@ if (shader_injection.tone_map_type == DKB_TONE_MAP_TYPE_SHOULDER) {
   dkb_c = DkbRecompShoulder(dkb_c, dkb_ys, dkb_c3[1], dkb_c3[4]);
   return;
 }
-if (shader_injection.tone_map_type != DKB_TONE_MAP_TYPE_RENODRT) return;
+if (!DkbIsExtended()) return;
 
 float nativePeakRatio = dkb_c3[4].x;
 float knee = dkb_c3[4].y;
@@ -78,8 +78,7 @@ renodx::draw::Config config = renodx::draw::BuildConfig();
 config.diffuse_white_nits = diffuseNits;
 config.graphics_white_nits = diffuseNits;   // unused by ToneMapPass
 config.peak_white_nits = peakNits;
-float grayInput = renodx::tonemap::inverse::Neutwo(
-    0.18f, peakRatio, max(config.reno_drt_white_clip, peakRatio));
+float grayInput = DkbGrayInput(peakRatio, config.reno_drt_white_clip);
 float3 scene = DkbSceneFromExposed(dkb_exposed, power, nativeGray, grayInput);
 
 // Without a LUT the graded colour is the clamped SDR curve itself, i.e. the
@@ -105,7 +104,8 @@ float3 gradedSDR = dkb_ys * max(0.f, lerp(1.f, dkb_graded / gradeY, dkb_chroma))
 float3 scene709 = mul(renodx::color::DISPLAYP3_TO_BT709_MAT, scene);
 float3 graded709 = mul(renodx::color::DISPLAYP3_TO_BT709_MAT, gradedSDR);
 float3 neutral709 = mul(renodx::color::DISPLAYP3_TO_BT709_MAT, neutralSDR);
-float3 hdr709 = renodx::draw::ToneMapPass(scene709, graded709, neutral709, config);
+float3 hdr709 = DkbToneMap(scene709, graded709, neutral709, config, peakRatio,
+    DkbGrayContrast(nativeGray, sigmaGray, sigmaBlack, sigmaWhite, slope, power));
 if (!all(isfinite(hdr709))) return;
 float3 hdrP3 = mul(renodx::color::BT709_TO_DISPLAYP3_MAT, hdr709);
 float outputY = renodx::color::y::from::BT709(hdr709);

@@ -1,6 +1,15 @@
 RenoDX for the Donkey Kong Bananza PC recompilation
 ===================================================
 
+IMPORTANT: set hdr_shoulder = 0 in dkb.ini
+------------------------------------------
+With hdr_shoulder = 1 (the recompilation's own highlight shoulder) the add-on
+cannot work: it loads, but every setting does nothing. Open dkb.ini, set
+    hdr_shoulder = 0
+and restart the game. The same shoulder is still available inside the
+add-on (Tone Mapper: Vanilla + shoulder). The add-on shows a red warning in
+its settings when hdr_shoulder is on.
+
 Extends the highlights of the game's native HDR mode to your display's peak
 brightness with RenoDX's tone mapper (RenoDRT). Below the game's HDR knee the
 image is the game's own. The add-on contains no game code: it recognises the
@@ -33,14 +42,21 @@ Tone Mapper          Vanilla: the game's console HDR curve.
                      RenoDRT (default): highlights extended to the peak.
                      Vanilla + shoulder: the recompilation's own highlight
                      shoulder, as with hdr_shoulder = 1.
+                     PsychoV (experimental): highlights extended with
+                     RenoDX's PsychoV tone mapper instead of RenoDRT. Matched
+                     to the game's contrast; bright colours fade towards
+                     white. In bright outdoor scenes its everyday highlights
+                     come out dimmer than RenoDRT's.
 Brightness Source    Game (default): follows the game's HDR settings
                      (hdr_peak_nits, capped by the game at 1400, and
                      hdr_game_nits). Custom: the two sliders below.
 Peak Brightness      Custom only. Peak white in nits.
 Game Brightness      Custom only. Paper white of the scene in nits; the HUD
                      stays at hdr_game_nits.
-Hue Correction, Highlight Saturation, Blowout, Flare
-                     Standard RenoDX highlight controls.
+Hue Correction       Keeps the game's hue in extended highlights (RenoDRT
+                     and PsychoV).
+Highlight Saturation, Blowout, Flare
+                     Standard RenoDX highlight controls (RenoDRT only).
 Structural rewrite   (Coverage section) On by default. Takes effect at the
                      next start of the game.
 
@@ -50,9 +66,32 @@ coverage.tsv beside itself. A shader it does not recognise keeps the game's
 image, with a reason code in that list; please include it when reporting a
 problem, together with ReShade.log.
 
+Peak brightness: with Brightness Source = Game the peak is the game's
+(1400 nits at most). If your display's real peak is lower, choose Custom and
+set Peak Brightness to it.
+
+Troubleshooting
+---------------
+Settings do nothing         hdr_shoulder is not 0 in dkb.ini (see the top).
+No RenoDX entry in the      ReShade was installed without add-on support, or
+Add-ons tab                 for the wrong API: reinstall ReShade for dkb.exe,
+                            Vulkan, with full add-on support.
+No ReShade overlay (Home)   ReShade is not installed for dkb.exe.
+
 Uninstall
 ---------
 Delete renodx-dkb-recomp.addon64 (and the renodx-dkb-recomp-coverage folder).
+
+Credits
+-------
+- RenoDX (https://github.com/clshortfuse/renodx) by ShortFuse (Carlos Lopez Jr.)
+  and contributors: the add-on framework and the RenoDRT and PsychoV tone
+  mappers. MIT licence.
+- The DKB PC recompilation (https://github.com/Lucas-blip-png/dkb-pc-recomp)
+  and its contributors: the recompilation and its native HDR mode.
+- ReShade (https://reshade.me) by crosire: the add-on system.
+- Developed with AI coding assistants (OpenAI Codex and Anthropic Claude),
+  directed and tested in-game by Elpenor-Maximus.
 
 Licence
 -------

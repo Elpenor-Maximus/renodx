@@ -60,7 +60,24 @@ bool IsRenoDRT() {
   return shader_injection.tone_map_type == DKB_TONE_MAP_TYPE_RENODRT;
 }
 
+// RenoDRT or PsychoV: the tone mappers that use the brightness settings.
+bool IsExtended() {
+  return IsRenoDRT() || shader_injection.tone_map_type == DKB_TONE_MAP_TYPE_PSYCHOV;
+}
+
 renodx::utils::settings::Settings settings = {
+    new renodx::utils::settings::Setting{
+        .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+        .label = "hdr_shoulder warning",
+        .section = "Tone Mapping",
+        .on_draw = [] {
+          ImGui::TextColored(ImVec4(1.f, 0.35f, 0.25f, 1.f),
+                             "hdr_shoulder is on in dkb.ini, so these settings do nothing.\n"
+                             "Set hdr_shoulder = 0 in dkb.ini and restart the game.");
+          return false;
+        },
+        .is_visible = &dkb::coverage::runtime::ShoulderOn,
+    },
     new renodx::utils::settings::Setting{
         .key = "ToneMapType",
         .binding = &shader_injection.tone_map_type,
@@ -72,8 +89,10 @@ renodx::utils::settings::Settings settings = {
         .tooltip = "Vanilla runs the game's own HDR composite (its console curve, with hdr_shoulder=0).\n"
                    "RenoDRT extends its highlights to the peak brightness.\n"
                    "Vanilla + shoulder adds the recompilation's own highlight shoulder (hdr_shoulder),\n"
-                   "as the main DKB build shows it.",
-        .labels = {"Vanilla", "RenoDRT", "Vanilla + shoulder"},
+                   "as the main DKB build shows it.\n"
+                   "PsychoV (experimental) extends the highlights with RenoDX's PsychoV test35 tone mapper instead of RenoDRT.\n"
+                   "Highlight Saturation, Blowout and Flare apply to RenoDRT only.",
+        .labels = {"Vanilla", "RenoDRT", "Vanilla + shoulder", "PsychoV (experimental)"},
     },
     new renodx::utils::settings::Setting{
         .key = "ToneMapBrightnessSource",
@@ -86,7 +105,7 @@ renodx::utils::settings::Settings settings = {
         .tooltip = "Game follows the game's HDR settings (hdr_peak_nits, capped at 1400 nits, and hdr_game_nits).\n"
                    "Custom uses the two sliders below.",
         .labels = {"Game", "Custom"},
-        .is_enabled = &IsRenoDRT,
+        .is_enabled = &IsExtended,
     },
     new renodx::utils::settings::Setting{
         .key = "ToneMapPeakNits",
@@ -99,7 +118,7 @@ renodx::utils::settings::Settings settings = {
                    "The game's HDR10 metadata still reports its own peak.",
         .min = 48.f,
         .max = 4000.f,
-        .is_enabled = []() { return IsRenoDRT() && IsCustomBrightness(); },
+        .is_enabled = []() { return IsExtended() && IsCustomBrightness(); },
     },
     new renodx::utils::settings::Setting{
         .key = "ToneMapGameNits",
@@ -111,7 +130,7 @@ renodx::utils::settings::Settings settings = {
                    "The HUD stays at the game's hdr_game_nits.",
         .min = 48.f,
         .max = 500.f,
-        .is_enabled = []() { return IsRenoDRT() && IsCustomBrightness(); },
+        .is_enabled = []() { return IsExtended() && IsCustomBrightness(); },
     },
     new renodx::utils::settings::Setting{
         .key = "ToneMapHueCorrection",
@@ -119,10 +138,10 @@ renodx::utils::settings::Settings settings = {
         .default_value = 100.f,
         .label = "Hue Correction",
         .section = "Tone Mapping",
-        .tooltip = "Hue retention strength in extended highlights.",
+        .tooltip = "Hue retention strength in extended highlights (RenoDRT and PsychoV).",
         .min = 0.f,
         .max = 100.f,
-        .is_enabled = &IsRenoDRT,
+        .is_enabled = &IsExtended,
         .parse = [](float value) { return value * 0.01f; },
     },
     new renodx::utils::settings::Setting{

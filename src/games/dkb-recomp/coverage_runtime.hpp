@@ -299,6 +299,17 @@ inline bool Draw() {
 }
 
 // Writes each unreplaced composite as <class>_0xCRC32.spv beside the add-on. Returns false: no settings change.
+// True once the game has created a composite with the recompilation's own highlight shoulder
+// (hdr_shoulder=1 in dkb.ini). The add-on leaves those alone, so its settings do nothing.
+inline bool ShoulderOn() {
+  using namespace internal;
+  std::shared_lock lock(mutex);
+  for (const auto& [crc, entry] : entries) {
+    if (entry.cls == Class::HDR_COMPOSITE_SHOULDERED) return true;
+  }
+  return false;
+}
+
 inline bool SaveUnreplaced() {
   using namespace internal;
   const auto folder = DumpFolder();

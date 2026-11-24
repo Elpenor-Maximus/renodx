@@ -13,6 +13,8 @@
 // The game's curve with the recompilation's own highlight shoulder
 // (dkb-pc-recomp runtime/spirv_hdr_shoulder.c), which hdr_shoulder=0 turns off.
 #define DKB_TONE_MAP_TYPE_SHOULDER 2.f
+// RenoDX PsychoV test35 (shaders/tonemap/psychov/test35.hlsl) in place of RenoDRT, experimental.
+#define DKB_TONE_MAP_TYPE_PSYCHOV 3.f
 
 // Game: follow the peak and white the game passes in its own uniforms
 // (DKB hdr_peak_nits, capped by the game at 1400, and hdr_game_nits).
@@ -49,6 +51,80 @@ struct DkbPushData {
 #define RENODX_TONE_MAP_FLARE                shader_injection.tone_map_flare
 
 #include "../../shaders/draw.hlsl"
+#include "../../shaders/tonemap/psychov/test35.hlsl"
+
+// The two tone mappers that extend highlights: RenoDRT and PsychoV.
+bool DkbIsExtended() {
+  return shader_injection.tone_map_type == DKB_TONE_MAP_TYPE_RENODRT
+         || shader_injection.tone_map_type == DKB_TONE_MAP_TYPE_PSYCHOV;
+}
+
+// Scene value of middle grey. RenoDRT (Neutwo) is inverted so that grey comes out at 0.18;
+// PsychoV keeps grey at its 0.18 adaptation anchor, so its input is 0.18.
+float DkbGrayInput(float peakRatio, float whiteClip) {
+  if (shader_injection.tone_map_type == DKB_TONE_MAP_TYPE_PSYCHOV) return 0.18f;
+  return renodx::tonemap::inverse::Neutwo(0.18f, peakRatio, max(whiteClip, peakRatio));
+}
+
+// Contrast of the game's own curve at middle grey: d ln(output) / d ln(scene) there. The
+// curve is Y = 1 - exp(-L(x)), L = (sigma(x) - sigmaBlack) / (sigmaWhite - sigmaBlack),
+// sigma(x) = 1 / (1 + exp((center - x) slope)), with x the curve input and Y(nativeGray) = 0.18;
+// the scene is proportional to x^p (DkbSceneFromExposed, p the mean power). So
+//   x Y'/Y = nativeGray (1 - 0.18) slope sigmaGray (1 - sigmaGray) / ((sigmaWhite - sigmaBlack) 0.18),
+// divided by p. PsychoV takes it as its cone response exponent, as RenoDX's Zelda OoT mod does with
+// its game's curve, so its tone matches the game's around grey and only the highlight range
+// differs. Kept within 0.5 to 3; a value that is not finite leaves PsychoV's own 1.
+float DkbGrayContrast(float nativeGray, float sigmaGray, float sigmaBlack, float sigmaWhite, float slope,
+                      float3 power) {
+  float range = sigmaWhite - sigmaBlack;
+  float contrast = nativeGray * (1.f - 0.18f) * slope * sigmaGray * (1.f - sigmaGray)
+                   / (range * 0.18f * DkbMeanPower(power));
+  return isfinite(contrast) ? clamp(contrast, 0.5f, 3.f) : 1.f;
+}
+
+// PsychoV parameters (psychotm_test35 arguments). The defaults are the add-on's; the tuning
+// script (dkb-pc-recomp/tools/dkb_psychov_tune.py) compiles variants with -D.
+#ifndef DKB_PSYCHOV_PURITY
+#define DKB_PSYCHOV_PURITY 1.f       // purity_scale: colour kept, 1 PsychoV's own
+#endif
+#ifndef DKB_PSYCHOV_TARGET
+#define DKB_PSYCHOV_TARGET 1         // gamut_compression_mode: 0 fits to BT.709, otherwise BT.2020
+#endif
+#ifndef DKB_PSYCHOV_COMPRESSION
+// Response compression. 0: PsychoV's automatic setting, from the display's range (peak over
+// grey), so it follows the peak. Tuned on the replay ramps (2026-11-22): white tops out at
+// 1347 nits of 1400 against 1315 with a fixed 1 (RenoDRT 1385), with the hue correction on.
+#define DKB_PSYCHOV_COMPRESSION 0.f
+#endif
+#ifndef DKB_PSYCHOV_HUE
+#define DKB_PSYCHOV_HUE shader_injection.tone_map_hue_correction  // OKLab hue correction to the graded scene
+#endif
+#ifndef DKB_PSYCHOV_FIT_MODE
+#define DKB_PSYCHOV_FIT_MODE 2       // 0 none, 1 RGB clip, 2 exact, 3 smooth, 4 contrast trade
+#endif
+
+// The tone mapping step, linear BT.709 relative to diffuse white. RenoDRT: RenoDX ToneMapPass.
+// PsychoV: the same grade transfer (ComputeUntonemappedGraded, as ToneMapPass does), then
+// psychotm_test35 at the peak ratio, adapted at 0.18 (grey stays at the game's 0.18), with the
+// game's contrast at grey (DkbGrayContrast) and fitted to BT.2020 (gamut_compression_mode 1, as
+// the Zelda OoT mod does for HDR). Its other controls stay at their defaults.
+float3 DkbToneMap(float3 scene709, float3 graded709, float3 neutral709, renodx::draw::Config config,
+                  float peakRatio, float grayContrast) {
+  if (shader_injection.tone_map_type == DKB_TONE_MAP_TYPE_PSYCHOV) {
+    float3 graded = renodx::draw::ComputeUntonemappedGraded(scene709, graded709, neutral709, config);
+    float3 mapped = renodx::tonemap::psychov::psychotm_test35(
+        graded, peakRatio, 1.f, 1.f, 1.f, 1.f, DKB_PSYCHOV_PURITY, 1.f, 100.f, 1.f, 1.f, 0, grayContrast,
+        float3(0.18f, 0.18f, 0.18f), float3(0.18f, 0.18f, 0.18f), 1.f, DKB_PSYCHOV_TARGET, 1.f,
+        DKB_PSYCHOV_COMPRESSION, renodx::tonemap::psychov::PSYCHO35_SOURCE_BOUNDARY_BT709, false, false,
+        DKB_PSYCHOV_FIT_MODE);
+    // PsychoV's cone response turns very bright saturated colours in hue (bright blue up to about
+    // 29 degrees towards purple on the replay ramps, whatever its fit). The Hue Correction setting
+    // takes the hue back to the graded scene's, as RenoDRT's hue correction does, keeping
+    // PsychoV's brightness and chroma.
+    return renodx::color::correct::Hue(mapped, graded, DKB_PSYCHOV_HUE);
+  }
+  return renodx::draw::ToneMapPass(scene709, graded709, neutral709, config);
+}
 
 // The recompilation's highlight shoulder at hdr_shoulder_strength 100, applied to the
 // composite's clamped colour c. The game runs its shoulder

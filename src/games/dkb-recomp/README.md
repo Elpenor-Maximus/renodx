@@ -73,12 +73,12 @@ Use the ReShade build with full add-on support for the Vulkan `dkb.exe`. Copy `r
 
 | Setting | Default | Effect |
 | --- | --- | --- |
-| Tone Mapper | RenoDRT | Vanilla runs the game's composite unchanged. With `hdr_shoulder=0` (required), that is the game's console HDR curve. Vanilla + shoulder applies the recompilation's own highlight shoulder (`spirv_hdr_shoulder.c` at `hdr_shoulder_strength` 100) in the add-on, as the main DKB build shows it; the brightness sliders do not apply to either Vanilla. |
+| Tone Mapper | RenoDRT | Vanilla runs the game's composite unchanged. With `hdr_shoulder=0` (required), that is the game's console HDR curve. Vanilla + shoulder applies the recompilation's own highlight shoulder (`spirv_hdr_shoulder.c` at `hdr_shoulder_strength` 100) in the add-on, as the main DKB build shows it; the brightness sliders do not apply to either Vanilla. PsychoV (experimental) extends the highlights with RenoDX's PsychoV test35 (`shaders/tonemap/psychov/test35.hlsl`) in place of RenoDRT: the same grade transfer and knee blend, PsychoV's cone exponent set to the game curve's contrast at grey (`DkbGrayContrast`), automatic compression, BT.2020 fit, then OKLab hue correction to the graded scene. |
 | Brightness Source | Game | Game follows `hdr_peak_nits` (capped by the game at 1400) and `hdr_game_nits`. Custom uses the two sliders below. |
 | Peak Brightness | 1000 | Custom only. HDR10 metadata still reports the game's own peak. |
 | Game Brightness | 203 | Custom only. Scales the scene. The HUD stays at `hdr_game_nits`. |
-| Hue Correction | 100 | RenoDRT hue retention in extended highlights. |
-| Highlight Saturation / Blowout / Flare | 50 / 0 / 0 | Standard RenoDX highlight controls. |
+| Hue Correction | 100 | Hue retention in extended highlights, RenoDRT and PsychoV. |
+| Highlight Saturation / Blowout / Flare | 50 / 0 / 0 | Standard RenoDX highlight controls, RenoDRT only. |
 
 With the defaults, the shader computes the revised correction that was verified offline.
 
